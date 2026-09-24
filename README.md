@@ -349,8 +349,13 @@ The combined score uses:
 | `fuzz.ratio`            | **50%** |
 | `fuzz.token_sort_ratio` | **30%** |
 | `fuzz.WRatio`           | **20%** |
+### Fuzzy Similarity Components
 
-The final score is calculated as:
+| Weight | Similarity Measure | Focuses On | Description |
+|---:|---|---|---|
+| **50%** | **Standard Ratio / Levenshtein** | Overall edit distance | Measures how many character-level changes, insertions, deletions, or substitutions are required to transform one string into another. |
+| **30%** | **Token Sort Ratio** | Word-order-independent similarity | Compares strings after sorting their words, so differences in word order have less impact. Example: `"John Smith"` vs `"Smith John"`. |
+| **20%** | **Partial Ratio** | Substring / partial matching | Identifies whether a shorter string closely matches a portion of a longer string. Example: `"John"` inside `"Johnathan"`. |
 
 ```text
 Final Score =
