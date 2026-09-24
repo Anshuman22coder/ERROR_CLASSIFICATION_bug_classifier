@@ -44,7 +44,8 @@ The classification was performed on:
 | Input used for classification |                `exec_feedback` |
 | Classification approach       | Reference-based fuzzy matching |
 | Similarity threshold          |                      **> 80%** |
-| Unmatched samples             |   Assigned to **UNCLASSIFIED** |
+| Reference examples            |                         **16** |
+| Unmatched samples             |               **UNCLASSIFIED** |
 
 The execution feedback contains information such as expected output, actual output, runtime exceptions, and function invocation errors.
 
@@ -69,7 +70,7 @@ The following examples were manually inspected and used as reference patterns fo
 
 ## 4.1 Interface & Formatting Errors
 
-These errors generally involve incompatibilities between the expected program interface/output format and the student's returned or supplied values.
+These errors generally involve incompatibilities between the expected program interface/output format and the student's supplied or returned values.
 
 | ID       | Reference Example                                                |
 | -------- | ---------------------------------------------------------------- |
@@ -78,9 +79,9 @@ These errors generally involve incompatibilities between the expected program in
 | **IF03** | Function called with an incorrect number of positional arguments |
 | **IF04** | Function definition expects different positional arguments       |
 | **IF05** | Missing required positional argument                             |
-| **IF06** | Too many positional arguments                                    |
+| **IF06** | Multiple required positional arguments are missing               |
 | **IF07** | Numeric strings returned instead of numeric tuple output         |
-| **IF08** | Tuple output returned instead of dictionary output               |
+| **IF08** | Dictionary returned instead of expected tuple output             |
 
 ### Examples
 
@@ -104,13 +105,13 @@ Actual Output   : {'slope': 1.0, 'intercept': 0.0}
 main() takes 1 positional argument but 3 were given
 ```
 
-These examples are categorized as **Interface & Formatting Errors** because the primary issue is the interface, expected output representation, function invocation, or output structure.
+These examples are categorized as **Interface & Formatting Errors** because the primary issue concerns the function interface, expected output representation, invocation, or output structure.
 
 ---
 
 ## 4.2 Data Type & Casting Errors
 
-These errors involve incompatible data types or differences related to numerical representation and conversion.
+These errors involve incompatible data types or numerical representation differences.
 
 | ID       | Reference Example                           |
 | -------- | ------------------------------------------- |
@@ -161,7 +162,7 @@ NameError: name 'a' is not defined
 UnboundLocalError: cannot access local variable ...
 ```
 
-These examples are categorized as **Initialization & Scope Errors** because they indicate problems involving variable definition, initialization, or scope.
+These examples are categorized as **Initialization & Scope Errors** because they involve variable definition, initialization, or scope.
 
 ---
 
@@ -190,91 +191,144 @@ These are categorized as **Math & Transformation Errors**.
 
 ---
 
-# 5. Additional Manually Audited Examples
+# 5. Classification Architecture
 
-The following execution feedback examples were directly associated with the corresponding taxonomy categories during manual auditing.
+The classifier is a **reference-based fuzzy matching system**.
 
-| Execution Feedback Pattern                             | Identified Category               |
-| ------------------------------------------------------ | --------------------------------- |
-| Expected output differs from returned output           | **Interface & Formatting Errors** |
-| `main() takes 1 positional argument but 3 were given`  | **Interface & Formatting Errors** |
-| `main() takes 0 positional arguments but 2 were given` | **Interface & Formatting Errors** |
-| `main() missing 1 required positional argument: 'y1'`  | **Interface & Formatting Errors** |
-| `main() missing 5 required positional arguments...`    | **Interface & Formatting Errors** |
-| `TypeError: 'int' object is not iterable`              | **Data Type & Casting Errors**    |
-| Floating-point precision divergence                    | **Data Type & Casting Errors**    |
-| `NameError: name 'a' is not defined`                   | **Initialization & Scope Errors** |
-| `UnboundLocalError` involving a local variable         | **Initialization & Scope Errors** |
-| `ZeroDivisionError: division by zero`                  | **Math & Transformation Errors**  |
-| `ZeroDivisionError: float division by zero`            | **Math & Transformation Errors**  |
-| Numeric strings returned instead of numeric values     | **Interface & Formatting Errors** |
-| Tuple returned instead of dictionary                   | **Interface & Formatting Errors** |
+There is no separate machine-learning model for each error category. Instead, the four categories are represented by manually audited reference examples.
+
+The current reference bank contains:
+
+```text
+Interface & Formatting
+        └── IF01–IF08
+
+Data Type & Casting
+        └── DT01–DT02
+
+Initialization & Scope
+        └── IS01–IS04
+
+Math & Transformation
+        └── MT01–MT02
+```
+
+For every execution-feedback record, the master classifier compares the normalized error against **all available reference examples**.
+
+The category of the highest-scoring reference is selected when the similarity exceeds the threshold.
 
 ---
 
-# 6. Classification Methodology
-
-The classification system uses a **reference-based fuzzy matching approach**.
-
-There is **no separate machine-learning classifier for each error category**. The same fuzzy-matching methodology is applied across all four categories.
-
-### Classification Pipeline
+# 6. Complete Classification Pipeline
 
 ```text
-Execution Feedback
-        ↓
-Extract Main Error Message
-        ↓
-Normalize Dynamic Values
-        ↓
-Compare with Audited Reference Examples
-        ↓
-Calculate Fuzzy Similarity
-        ↓
-Select Highest-Matching Reference
-        ↓
-Apply Similarity Threshold
-        ↓
-Assign Error Category
-        ↓
-Otherwise → UNCLASSIFIED
+                 exec_feedback
+                       │
+                       ▼
+             Extract Error Text
+                       │
+                       ▼
+             Normalize Error Text
+                       │
+                       ▼
+        Normalize Dynamic Values
+        (numbers, variable names)
+                       │
+                       ▼
+          Compare Against ALL
+          Audited References
+                       │
+          ┌────────────┼────────────┐
+          ▼            ▼            ▼
+         IF           DT           IS          MT
+       IF01–08       DT01–02      IS01–04     MT01–02
+          └────────────┼────────────┘
+                       │
+                       ▼
+             Calculate Similarity
+                       │
+                       ▼
+              Highest Score
+                       │
+                       ▼
+                Score > 80%?
+                 /          \
+               YES           NO
+                │             │
+                ▼             ▼
+          Assign Reference   UNCLASSIFIED
+             Taxonomy
 ```
 
 ---
 
 # 7. Error Message Extraction
 
-The first step is to extract the relevant error information from `exec_feedback`.
+The first step is to extract the meaningful error information from `exec_feedback`.
 
-Depending on the execution feedback, this may include:
+Many records have a structure similar to:
 
-* Runtime exceptions
-* Expected output
-* Actual output
-* Function argument errors
-* Missing arguments
-* Type errors
-* Variable/scope errors
-* Mathematical exceptions
+```python
+{
+    "test_case": (...),
+    "error": "Runtime issue: TypeError: ..."
+}
+```
 
-The objective is to compare the **meaningful error signature** rather than the complete raw feedback structure.
+The program uses `ast.literal_eval()` to safely parse dictionary-like execution feedback when possible.
+
+If parsing fails, regular-expression fallbacks are used to locate:
+
+* `error` fields
+* `Runtime issue` sections
+* Other usable feedback text
+
+The purpose is to compare the **meaningful error signature** rather than unnecessary surrounding structure.
 
 ---
 
 # 8. Error Message Normalization
 
-Execution messages may contain dynamic values such as:
+Execution messages can contain dynamic values such as:
 
 * Numbers
 * Variable names
 * Test-case values
 * Other changing identifiers
 
-These values are normalized before similarity comparison.
+The function:
 
-For example, different numerical values or variable names can be represented using generalized placeholders.
+```python
+normalize_for_matching()
+```
 
-This reduces unnecessary differences between otherwise similar error messages.
+generalizes these values before fuzzy comparison.
+
+For example:
+
+```text
+main() takes 1 positional argument but 3 were given
+```
+
+can become conceptually:
+
+```text
+main() takes <num> positional argument but <num> were given
+```
+
+Similarly:
+
+```text
+name 'a' is not defined
+```
+
+can become:
+
+```text
+name <var> is not defined
+```
+
+This prevents irrelevant differences in variable names and numerical values from dominating the similarity score.
 
 ---
 
@@ -288,7 +342,7 @@ Three fuzzy similarity measures are combined:
 * `fuzz.token_sort_ratio`
 * `fuzz.WRatio`
 
-The combined similarity score uses the following weighting:
+The combined score uses:
 
 | Similarity Measure      |  Weight |
 | ----------------------- | ------: |
@@ -296,41 +350,337 @@ The combined similarity score uses the following weighting:
 | `fuzz.token_sort_ratio` | **30%** |
 | `fuzz.WRatio`           | **20%** |
 
-The resulting score represents how closely an execution error matches a manually audited reference example.
+The final score is calculated as:
+
+```text
+Final Score =
+    0.50 × fuzz.ratio
+  + 0.30 × fuzz.token_sort_ratio
+  + 0.20 × fuzz.WRatio
+```
+
+The resulting value ranges from **0 to 100**.
 
 ---
 
-# 10. Classification Rule
+# 10. How Each Error Type Is Identified
+
+The four taxonomy categories are represented by separate groups of manually audited references.
+
+## 10.1 Interface & Formatting
+
+References:
+
+```text
+IF01–IF08
+```
+
+The classifier looks for high similarity with patterns involving:
+
+* Function argument mismatch
+* Missing arguments
+* Expected/actual output mismatch
+* Output type or structure mismatch
+* Formatting differences
+
+For example:
+
+```text
+main() takes 1 positional argument but 3 were given
+```
+
+will have high similarity with an Interface reference such as IF02.
+
+If that reference obtains the highest score and the score is greater than 80%, the result becomes:
+
+```text
+Interface & Formatting Errors
+```
+
+---
+
+## 10.2 Data Type & Casting
+
+References:
+
+```text
+DT01–DT02
+```
+
+The classifier looks for high similarity with patterns involving:
+
+* Incompatible data types
+* Iterability/type errors
+* Numerical representation differences represented in the audited examples
+
+For example:
+
+```text
+TypeError: 'int' object is not iterable
+```
+
+can closely match DT01.
+
+If DT01 produces the highest score above the threshold:
+
+```text
+Data Type & Casting Errors
+```
+
+is assigned.
+
+---
+
+## 10.3 Initialization & Scope
+
+References:
+
+```text
+IS01–IS04
+```
+
+The classifier looks for high similarity with patterns involving:
+
+* Undefined variables
+* `NameError`
+* `UnboundLocalError`
+* Local variables accessed without proper initialization
+
+For example:
+
+```text
+NameError: name 'x' is not defined
+```
+
+can closely match the normalized structure of IS04:
+
+```text
+NameError: name '<var>' is not defined
+```
+
+If IS04 produces the highest score above the threshold:
+
+```text
+Initialization & Scope Errors
+```
+
+is assigned.
+
+---
+
+## 10.4 Math & Transformation
+
+References:
+
+```text
+MT01–MT02
+```
+
+The classifier looks for high similarity with mathematical runtime-error patterns.
+
+For example:
+
+```text
+ZeroDivisionError: division by zero
+```
+
+can closely match MT01.
+
+If MT01 produces the highest score above the threshold:
+
+```text
+Math & Transformation Errors
+```
+
+is assigned.
+
+---
+
+# 11. Role of the Four Category-Specific Functions
+
+The implementation contains four category-specific helper functions:
+
+```python
+classify_interface_formatting()
+classify_data_type_casting()
+classify_initialization_scope()
+classify_math_transformation()
+```
+
+Their purpose is to allow each taxonomy category to be tested or classified **independently**.
+
+For example:
+
+```python
+classify_interface_formatting(error, references)
+```
+
+filters the reference bank and compares the error only against:
+
+```text
+IF01
+IF02
+IF03
+...
+IF08
+```
+
+Similarly:
+
+```python
+classify_data_type_casting()
+```
+
+uses only:
+
+```text
+DT01–DT02
+```
+
+while:
+
+```python
+classify_initialization_scope()
+```
+
+uses:
+
+```text
+IS01–IS04
+```
+
+and:
+
+```python
+classify_math_transformation()
+```
+
+uses:
+
+```text
+MT01–MT02
+```
+
+### Important implementation detail
+
+These four functions are **reusable category-specific helpers**. They are not the functions used to make the final dataset-wide classification.
+
+The actual final classification is performed by:
+
+```python
+classify_execution_feedback()
+```
+
+This master function compares the input error against **all manually audited references simultaneously**:
+
+```text
+Input Error
+     │
+     ├── IF01–IF08
+     ├── DT01–DT02
+     ├── IS01–IS04
+     └── MT01–MT02
+             │
+             ▼
+       Highest similarity
+             │
+             ▼
+       Corresponding taxonomy
+```
+
+This ensures that an error is not restricted to a category before the similarity comparison is performed.
+
+---
+
+# 12. Master Classification Function
+
+The main classification function is:
+
+```python
+classify_execution_feedback()
+```
+
+Its logic is:
+
+```text
+Raw exec_feedback
+        ↓
+Check for missing feedback
+        ↓
+Extract meaningful error text
+        ↓
+Normalize error
+        ↓
+Compare with every reference
+        ↓
+Find highest similarity
+        ↓
+Is score > 80?
+      /       \
+    YES        NO
+     ↓          ↓
+Assign        UNCLASSIFIED
+taxonomy
+```
+
+For example, suppose one input produces the following conceptual scores:
+
+| Reference | Similarity |
+| --------- | ---------: |
+| IF01      |       32.4 |
+| IF02      |       41.7 |
+| DT01      |       48.2 |
+| IS01      |       55.1 |
+| IS04      |   **97.8** |
+| MT01      |       36.4 |
+
+The highest score is:
+
+```text
+IS04 = 97.8
+```
+
+Since:
+
+```text
+97.8 > 80
+```
+
+the result is:
+
+```text
+Initialization & Scope Errors
+```
+
+---
+
+# 13. Classification Rule
 
 For every execution error:
 
 1. Extract the main error message.
 2. Normalize dynamic values.
-3. Compare the normalized message with the reference examples.
+3. Compare the normalized message with all reference examples.
 4. Calculate fuzzy similarity.
-5. Select the reference with the highest similarity score.
-6. If the similarity score is **greater than 80%**, assign its corresponding taxonomy category.
-7. If no reference exceeds the threshold, assign **UNCLASSIFIED**.
+5. Select the reference with the highest similarity.
+6. If the highest similarity is **greater than 80%**, assign the taxonomy associated with that reference.
+7. Otherwise assign **UNCLASSIFIED**.
 
 ### Decision Rule
 
 ```text
-Similarity > 80%
-        ↓
-Assign corresponding error category
-
-Similarity ≤ 80%
-        ↓
-UNCLASSIFIED
+Best Similarity > 80%
+        │
+        ├── YES → Assign taxonomy of best reference
+        │
+        └── NO  → UNCLASSIFIED
 ```
 
 No forced classification is performed.
 
-This is important because an error that does not sufficiently resemble an existing reference should not automatically be assigned to an inappropriate category.
-
 ---
 
-# 11. Reference Bank
+# 14. Reference Bank
 
 The current manually audited reference bank contains **16 reference examples**.
 
@@ -344,7 +694,98 @@ The current manually audited reference bank contains **16 reference examples**.
 
 ---
 
-# 12. Classification Results
+# 15. Sanity Testing
+
+Before processing the complete dataset, the program runs representative sanity tests using known examples from the reference bank.
+
+These tests verify that:
+
+* Error extraction works.
+* Text normalization works.
+* Dynamic values are normalized.
+* Fuzzy matching works.
+* The expected reference is retrieved.
+* The similarity threshold is applied correctly.
+
+The program prints:
+
+```text
+Classification
+Reference
+Similarity
+```
+
+for each sanity-test example.
+```
+===============================================================================
+MANUAL SANITY CHECK EXAMPLES:::________-----
+================================================================================
+
+Test 1
+------------------------------------------------------------
+Classification: Interface & Formatting Errors
+Reference: IF02
+Similarity: 100.0
+
+Test 2
+------------------------------------------------------------
+Classification: Interface & Formatting Errors
+Reference: IF03
+Similarity: 100.0
+
+Test 3
+------------------------------------------------------------
+Classification: Data Type & Casting Errors
+Reference: DT01
+Similarity: 100.0
+
+Test 4
+------------------------------------------------------------
+Classification: Initialization & Scope Errors
+Reference: IS04
+Similarity: 100.0
+
+Test 5
+------------------------------------------------------------
+Classification: Initialization & Scope Errors
+Reference: IS01
+Similarity: 100.0
+
+Test 6
+------------------------------------------------------------
+Classification: Math & Transformation Errors
+Reference: MT01
+Similarity: 100.0
+
+Test 7
+------------------------------------------------------------
+Classification: Math & Transformation Errors
+Reference: MT02
+Similarity: 100.0
+
+Test 8
+------------------------------------------------------------
+Classification: Data Type & Casting Errors
+Reference: DT02
+Similarity: 100.0
+
+Test 9
+------------------------------------------------------------
+Classification: Interface & Formatting Errors
+Reference: IF07
+Similarity: 100.0
+
+Test 10
+------------------------------------------------------------
+Classification: Interface & Formatting Errors
+Reference: IF08
+Similarity: 100.0
+
+
+```
+---
+
+# 16. Classification Results
 
 The methodology was applied to all **14,408 submissions**.
 
@@ -357,31 +798,93 @@ The methodology was applied to all **14,408 submissions**.
 | **Math & Transformation Errors**  |        605 |  **4.20%** |
 | **Total**                         | **14,408** |   **100%** |
 
+Therefore:
+
+```text
+Classified:
+3,204 + 2,850 + 1,637 + 605
+= 8,296 submissions
+```
+
+and:
+
+```text
+8,296 / 14,408
+= 57.58%
+```
+
+remained classified into one of the four defined categories.
+
+The remaining:
+
+```text
+6,112 / 14,408
+= 42.42%
+```
+
+were assigned to **UNCLASSIFIED**.
+
 ---
 
-# 13. Results Interpretation
+# 17. Results Interpretation
 
 Out of the **14,408 submissions**:
 
-* **8,296 submissions (57.58%)** were successfully classified into one of the four defined error categories.
+* **8,296 submissions (57.58%)** were classified into one of the four defined error categories.
 * **6,112 submissions (42.42%)** remained **UNCLASSIFIED**.
 
 The UNCLASSIFIED category is intentionally retained rather than forcing uncertain examples into an existing taxonomy.
 
-These unclassified samples can be manually audited to determine whether:
+These samples can be manually audited to determine whether:
 
 1. Existing reference examples need to be expanded.
 2. Existing categories require additional examples.
 3. New semantic error categories should be introduced.
-4. Some execution messages cannot reliably reveal the underlying semantic error type.
+4. Some execution messages do not contain enough information to identify the underlying semantic error.
 
 ---
 
-# 14. Key Observation
+# 18. Excel Output
 
-The results demonstrate that **execution error messages contain useful information for identifying broad classes of programming errors**, but the success of reference-based classification depends strongly on the coverage and quality of the manually audited reference examples.
+The program generates:
 
-The current approach successfully identifies **57.58%** of the submissions using the existing reference bank while leaving **42.42%** available for further investigation.
+```text
+Execution_Error_Taxonomy_Fuzzy_Analysis.xlsx
+```
+
+The workbook contains multiple sheets:
+
+| Sheet                  | Purpose                                      |
+| ---------------------- | -------------------------------------------- |
+| `All_Classified_Data`  | Complete dataset with classification results |
+| `Summary`              | Error-type counts and percentages            |
+| `Interface_Formatting` | Interface & Formatting samples               |
+| `Data_Type_Casting`    | Data Type & Casting samples                  |
+| `Initialization_Scope` | Initialization & Scope samples               |
+| `Math_Transformation`  | Math & Transformation samples                |
+| `Unclassified_Audit`   | Samples requiring further manual analysis    |
+| `No_Feedback`          | Rows without usable feedback                 |
+| `Reference_Summary`    | Reference examples used by the classifier    |
+| `Match_Statistics`     | Similarity and classification statistics     |
+
+Additional columns added to the original dataset include:
+
+```text
+exec_feedback_clean
+exec_feedback_matching_text
+identified_error_type
+matched_reference_id
+fuzzy_similarity_score
+matched_reference_example
+```
+
+---
+
+# 19. Key Observation
+
+The results demonstrate that **execution error messages contain useful information for identifying broad classes of programming errors**, but the effectiveness of reference-based classification depends strongly on the coverage and quality of the manually audited reference examples.
+
+The current approach classifies **57.58%** of the submissions using the existing reference bank while leaving **42.42%** available for further investigation.
 
 This provides a basis for an iterative taxonomy-development process:
 
@@ -403,7 +906,7 @@ Improved Classification
 
 ---
 
-# 15. Current Taxonomy
+# 20. Current Taxonomy
 
 ```text
 Programming Execution Errors
@@ -412,9 +915,8 @@ Programming Execution Errors
 │   ├── Output mismatch
 │   ├── Function argument mismatch
 │   ├── Missing arguments
-│   ├── Excess arguments
 │   ├── Return-type mismatch
-│   └── Data structure/output-format mismatch
+│   └── Output structure/format mismatch
 │
 ├── Data Type & Casting Errors
 │   ├── Incompatible data type operations
@@ -435,7 +937,7 @@ Programming Execution Errors
 
 ---
 
-# 16. Limitations
+# 21. Limitations
 
 The current approach has several limitations:
 
@@ -444,12 +946,13 @@ The current approach has several limitations:
 * Some execution messages may contain insufficient information to determine the actual programming mistake.
 * Different underlying programming mistakes can sometimes produce similar execution messages.
 * The current taxonomy may not cover all possible Python execution errors.
-* The **80% similarity threshold** affects the trade-off between classification coverage and precision.
+* The **80% similarity threshold** affects the trade-off between classification coverage and classification strictness.
 * The classification is based on execution feedback and therefore does not necessarily identify the deeper logical cause of every programming error.
+* The current category-specific helper functions support independent category testing, but the final dataset classification is performed by the master classifier across all references.
 
 ---
 
-# 17. Future Scope
+# 22. Future Scope
 
 Possible extensions include:
 
@@ -462,10 +965,11 @@ Possible extensions include:
 * Developing a supervised classifier after sufficient labeled examples are collected.
 * Comparing fuzzy matching with transformer-based semantic classification.
 * Evaluating precision, recall, F1-score, and confusion matrices using a manually labeled evaluation set.
+* Iteratively adding high-confidence manually audited references to improve coverage.
 
 ---
 
-# 18. Summary
+# 23. Summary
 
 This project presents a **reference-based fuzzy classification framework** for identifying semantic categories of Python programming errors from execution feedback.
 
@@ -476,14 +980,24 @@ The current taxonomy contains four error categories:
 * **Initialization & Scope Errors**
 * **Math & Transformation Errors**
 
-Using **16 manually audited reference examples** and **RapidFuzz-based similarity matching**, the approach classified:
+The classifier uses:
+
+* **16 manually audited reference examples**
+* **Error extraction**
+* **Dynamic-value normalization**
+* **RapidFuzz similarity**
+* **Weighted fuzzy scoring**
+* **An 80% similarity threshold**
+* **UNCLASSIFIED handling for uncertain samples**
+
+The approach classified:
 
 > **8,296 / 14,408 submissions (57.58%)**
 
-while:
+into one of the four defined categories, while:
 
 > **6,112 / 14,408 submissions (42.42%)**
 
 remained **UNCLASSIFIED** for further manual analysis.
 
-The unclassified samples provide an important foundation for iteratively expanding and refining the programming-error taxonomy.
+The unclassified samples provide a foundation for iteratively expanding and refining the programming-error taxonomy.
